@@ -47,9 +47,6 @@ that should keep working while you carry the laptop around.
 2. Move `Lidlight.app` to `/Applications` (or `~/Applications`).
 3. Open it. A 🌙 appears in the menu bar. macOS may ask you to confirm the first launch.
 
-Releases from v1.0.2 are signed by **Karolis dev MB** and notarized by Apple;
-no quarantine-removal command is needed.
-
 Or build it yourself (needs Xcode Command Line Tools):
 
 ```sh
