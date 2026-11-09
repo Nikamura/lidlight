@@ -45,11 +45,10 @@ that should keep working while you carry the laptop around.
 
 1. Download **Lidlight.zip** from the [latest release](https://github.com/Nikamura/lidlight/releases/latest) and unzip it.
 2. Move `Lidlight.app` to `/Applications` (or `~/Applications`).
-3. The app is ad-hoc signed, not notarized, so clear the quarantine flag once:
-   ```sh
-   xattr -dr com.apple.quarantine /Applications/Lidlight.app
-   ```
-4. Open it. A 🌙 appears in the menu bar.
+3. Open it. A 🌙 appears in the menu bar. macOS may ask you to confirm the first launch.
+
+Releases from v1.0.2 are signed by **Karolis dev MB** and notarized by Apple;
+no quarantine-removal command is needed.
 
 Or build it yourself (needs Xcode Command Line Tools):
 
@@ -58,6 +57,10 @@ git clone https://github.com/Nikamura/lidlight.git
 cd lidlight
 ./build.sh --install   # → ~/Applications/Lidlight.app
 ```
+
+For Developer ID signing, notarization, and transferring the signing identity
+between build Macs, see [SIGNING.md](SIGNING.md). Public release builds use
+`release.sh`; `build.sh --zip` alone does not notarize the app.
 
 ## How it works
 

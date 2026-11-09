@@ -48,7 +48,15 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --sign - "$APP" 2>/dev/null
+# Local builds remain ad-hoc signed; release.sh requires a Developer ID identity.
+case "${SIGNING_IDENTITY:--}" in
+  -) codesign --force --sign - "$APP" ;;
+  "Developer ID Application: "*)
+    codesign --force --sign "$SIGNING_IDENTITY" --options runtime --timestamp "$APP"
+    ;;
+  *) echo "SIGNING_IDENTITY must be a Developer ID Application identity." >&2; exit 1 ;;
+esac
+codesign --verify --strict "$APP"
 echo "Built $APP ($VERSION)"
 
 case "${1:-}" in

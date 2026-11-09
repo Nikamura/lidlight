@@ -12,6 +12,7 @@
 import AppKit
 import IOKit.ps
 import ServiceManagement
+import UserNotifications
 
 let sudoersPath = "/etc/sudoers.d/lidlight"
 let batteryFloor = 10 // percent; auto-off when on battery at or below this
@@ -79,7 +80,7 @@ func batteryState() -> (Int, Bool)? {
 
 // MARK: - App
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotificationCenterDelegate {
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     let menu = NSMenu()
     let defaults = UserDefaults.standard
@@ -94,15 +95,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set { defaults.set(newValue, forKey: indefiniteKey) }
     }
     var isOn = false
+    var offFailureNotified = false
 
     func applicationDidFinishLaunching(_ n: Notification) {
         menu.delegate = self
         item.menu = menu
+        UNUserNotificationCenter.current().delegate = self
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
         // Reconcile persisted state with the system.
         isOn = sleepDisabled()
         if let end = endDate {
-            if end <= Date() { turnOff() } else if !isOn { endDate = nil }
+            if end <= Date() { turnOff(reason: "Timer ended while Lidlight wasn’t running.") } else if !isOn { endDate = nil }
         } else if isOn && !indefinite {
             indefinite = true // was enabled outside the app; treat as "until turned off"
         }
@@ -139,26 +143,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refresh()
     }
 
-    /// Non-interactive off (timer, battery, launch). Falls back to a notification if not set up.
-    func turnOff() {
+    /// Non-interactive off (timer, battery, launch). Notifies success with `reason`,
+    /// or warns once if sleep could not be restored (keeps retrying silently).
+    @discardableResult
+    func turnOff(reason: String? = nil) -> Bool {
         if setSleepDisabled(false) || !sleepDisabled() {
-            isOn = false; endDate = nil; indefinite = false
-        } else {
-            notify("Couldn’t re-enable sleep", "Open Lidlight → Turn off to finish setup.")
+            isOn = false; endDate = nil; indefinite = false; offFailureNotified = false
+            if let r = reason { notify("Sleep re-enabled", r) }
+            refresh()
+            return true
+        }
+        if !offFailureNotified {
+            offFailureNotified = true
+            notify("Couldn’t re-enable sleep", "Your Mac is still kept awake. Click Lidlight → Turn off to finish setup.")
         }
         refresh()
+        return false
     }
 
     @objc func off() {
-        if apply(false) { isOn = false; endDate = nil; indefinite = false }
+        if apply(false) { isOn = false; endDate = nil; indefinite = false; offFailureNotified = false }
         refresh()
     }
 
     func tick() {
         guard isOn else { return }
-        if let end = endDate, end <= Date() { turnOff(); notify("Sleep re-enabled", "Timer finished."); return }
+        if let end = endDate, end <= Date() { turnOff(reason: "Timer finished."); return }
         if let (pct, onBattery) = batteryState(), onBattery, pct <= batteryFloor {
-            turnOff(); notify("Sleep re-enabled", "Battery at \(pct)%."); return
+            turnOff(reason: "Battery at \(pct)%."); return
         }
         if !sleepDisabled() { isOn = false; endDate = nil; indefinite = false } // changed externally
         refresh()
@@ -214,6 +226,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.removeAllItems()
         let status: String
         if !isOn { status = "Sleep: normal" }
+        else if let end = endDate, end <= Date() { status = "Timer ended — click Turn off to re-enable sleep" }
         else if let end = endDate {
             let f = DateFormatter(); f.timeStyle = .short
             status = "Awake — \(long(end)) left (until \(f.string(from: end)))"
@@ -254,6 +267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func short(_ end: Date) -> String {
+        if end <= Date() { return "!" } // timer ended but sleep not restored
         let m = max(0, Int(ceil(end.timeIntervalSinceNow / 60)))
         return m >= 60 ? "\(m / 60)h\(m % 60 > 0 ? String(format: "%02d", m % 60) : "")" : "\(m)m"
     }
@@ -278,8 +292,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func notify(_ title: String, _ text: String) {
-        // Lightweight notification without UserNotifications entitlement fuss.
-        run("/usr/bin/osascript", ["-e", "display notification \"\(text)\" with title \"Lidlight\" subtitle \"\(title)\""])
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = text
+        let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(req) { [weak self] error in
+            guard error != nil else { return }
+            // AppleScript notifications belong to the script runner and show its
+            // generic icon. Keep failures in Lidlight instead.
+            DispatchQueue.main.async { [weak self] in
+                self?.alert(title, text)
+            }
+        }
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
     }
 }
 
