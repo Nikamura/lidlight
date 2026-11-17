@@ -16,6 +16,10 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT"></a>
 </p>
 
+<p align="center">
+  <img src="assets/screenshot.png" alt="Lidlight's menu bar menu: pick a timer from 15 minutes to 8 hours, then the menu bar counts down and the menu offers +15 minutes, +1 hour and Turn off">
+</p>
+
 ---
 
 ## Why
